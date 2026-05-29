@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FiveM Player Monitor — Live Dispatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-0:      #07090c;
+    --bg-1:      #0c1015;
+    --bg-2:      #131822;
+    --bg-3:      #1a212e;
+    --line:      #232b3a;
+    --line-2:    #2e3849;
+    --text-0:    #e7ecf3;
+    --text-1:    #a4adbd;
+    --text-2:    #6b7488;
+    --text-3:    #4a5163;
+    --accent:    #ff7a1a;       /* FiveM-ish amber */
+    --accent-2:  #ffb87a;
+    --cyan:      #4cd6e0;
+    --green:     #4ade80;
+    --yellow:    #facc15;
+    --red:       #ef4444;
+    --magenta:   #e879f9;
+    --shadow:    0 0 0 1px var(--line), 0 24px 60px -20px rgba(0,0,0,0.6);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg-0);
+    color: var(--text-0);
+    font-family: "Bricolage Grotesque", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(800px 400px at 80% -10%, rgba(255,122,26,0.08), transparent 60%),
+      radial-gradient(900px 500px at -10% 20%, rgba(76,214,224,0.05), transparent 60%),
+      linear-gradient(transparent 95%, rgba(255,255,255,0.025) 95%);
+    background-size: auto, auto, 100% 32px;
+  }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+
+  /* ─────────── Settings panel ─────────── */
+  .settings-panel {
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-1);
+  }
+  .settings-inner {
+    max-width: 1480px; margin: 0 auto;
+    padding: 16px 24px;
+  }
+  .setting-row {
+    display: flex; gap: 14px; align-items: flex-end;
+    flex-wrap: wrap;
+  }
+  .setting-row label {
+    display: flex; flex-direction: column; gap: 4px;
+    flex: 1; min-width: 220px;
+  }
+  .setting-label {
+    font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.18em; color: var(--text-2);
+  }
+  .setting-hint {
+    font-size: 12px; color: var(--text-1); line-height: 1.5;
+  }
+  .setting-hint code {
+    background: var(--bg-3); border: 1px solid var(--line);
+    padding: 1px 6px; border-radius: 4px; font-size: 11px;
+    color: var(--accent);
+  }
+  .setting-status {
+    margin-top: 12px; font-size: 12px;
+    font-family: "JetBrains Mono", monospace;
+  }
+  .setting-status.ok  { color: var(--green); }
+  .setting-status.err { color: var(--red); }
+
+  /* ─────────── Top Bar ─────────── */
+  .topbar {
+    border-bottom: 1px solid var(--line);
+    background: rgba(7,9,12,0.85);
+    backdrop-filter: blur(8px);
+    position: sticky; top: 0; z-index: 50;
+  }
+  .topbar-inner {
+    max-width: 1480px; margin: 0 auto;
+    padding: 14px 24px;
+    display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 12px;
+    font-weight: 700; letter-spacing: -0.02em; font-size: 18px;
+  }
+  .brand-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 16px var(--accent), 0 0 4px var(--accent);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%     { opacity: 0.6; transform: scale(0.85); }
+  }
+  .brand small {
+    color: var(--text-2); font-weight: 400; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.18em;
+    margin-left: 4px;
+  }
+  .controls {
+    display: flex; gap: 10px; flex: 1; justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .input, .btn, .select {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    color: var(--text-0);
+    padding: 9px 14px;
+    border-radius: 6px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    transition: all 0.15s;
+  }
+  .input:focus, .select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(255,122,26,0.15);
+  }
+  .input { min-width: 240px; }
+  .btn { cursor: pointer; user-select: none; }
+  .btn:hover { border-color: var(--line-2); background: var(--bg-3); }
+  .btn-primary {
+    background: var(--accent); border-color: var(--accent); color: #1a0f00;
+    font-weight: 700;
+  }
+  .btn-primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+  .btn-ghost { background: transparent; }
+
+  /* ─────────── Layout ─────────── */
+  .wrap { max-width: 1480px; margin: 0 auto; padding: 24px; }
+
+  .grid-top {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 1100px) { .grid-top { grid-template-columns: 1fr 1fr; } }
+
+  .card {
+    background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: "";
+    position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--line-2), transparent);
+  }
+  .card-label {
+    font-size: 10px; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--text-2);
+    margin-bottom: 6px; display: flex; align-items: center; gap: 8px;
+  }
+  .card-label::before {
+    content: ""; width: 4px; height: 4px; background: var(--accent); border-radius: 50%;
+  }
+  .card-value {
+    font-size: 26px; font-weight: 600; letter-spacing: -0.02em;
+    font-family: "JetBrains Mono", monospace;
+  }
+  .card-value small {
+    font-size: 14px; color: var(--text-2); font-weight: 400;
+  }
+  .card-sub {
+    color: var(--text-1); font-size: 12px; margin-top: 4px;
+  }
+
+  .server-card { grid-column: span 1; }
+  .server-card .hostname {
+    font-size: 16px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    margin-bottom: 4px;
+  }
+  .server-card .project-desc {
+    font-size: 12px; color: var(--text-1);
+    margin-bottom: 6px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .server-card .project-desc:empty { display: none; }
+  .server-card .meta {
+    display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px;
+    font-size: 12px; color: var(--text-1);
+  }
+  .server-card .meta span b {
+    color: var(--text-0); font-weight: 500;
+  }
+  .owner-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px dashed var(--line);
+    font-size: 12px;
+  }
+  .owner-row:empty { display: none; }
+  .owner-row img {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1px solid var(--line);
+  }
+  .owner-row a { color: var(--text-1); text-decoration: none; }
+  .owner-row a:hover { color: var(--accent); }
+  .tag-row {
+    display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px;
+  }
+  .tag-row:empty { display: none; }
+  .tag-chip {
+    background: var(--bg-3); border: 1px solid var(--line);
+    color: var(--text-1); font-size: 10px;
+    padding: 2px 8px; border-radius: 999px;
+    font-family: "JetBrains Mono", monospace;
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-family: "JetBrains Mono", monospace;
+    background: var(--bg-3); border: 1px solid var(--line);
+  }
+  .pill.ok    { color: var(--green); border-color: rgba(74,222,128,0.3); }
+  .pill.warn  { color: var(--yellow); border-color: rgba(250,204,21,0.3); }
+  .pill.err   { color: var(--red); border-color: rgba(239,68,68,0.3); }
+  .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* ─────────── Toolbar ─────────── */
+  .toolbar {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .toolbar .input { flex: 1; min-width: 220px; }
+  .checkbox-wrap {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 14px; background: var(--bg-2);
+    border: 1px solid var(--line); border-radius: 6px;
+    font-family: "JetBrains Mono", monospace; font-size: 12px;
+    cursor: pointer; user-select: none;
+  }
+  .checkbox-wrap input { accent-color: var(--accent); }
+
+  /* ─────────── Layout split ─────────── */
+  .split {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 16px;
+  }
+  @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } }
+
+  /* ─────────── Player Table ─────────── */
+  .table-wrap {
+    background: var(--bg-1); border: 1px solid var(--line);
+    border-radius: 10px; overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    text-align: left; font-weight: 500;
+    text-transform: uppercase; font-size: 10px; letter-spacing: 0.18em;
+    color: var(--text-2);
+    padding: 12px 14px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--line);
+    cursor: pointer; user-select: none;
+    white-space: nowrap;
+  }
+  thead th:hover { color: var(--text-0); }
+  thead th .sort-arrow {
+    color: var(--accent); margin-left: 4px;
+  }
+  tbody tr {
+    border-bottom: 1px solid var(--line);
+    transition: background 0.1s;
+    cursor: pointer;
+  }
+  tbody tr:hover { background: rgba(255,122,26,0.04); }
+  tbody tr.expanded { background: var(--bg-2); }
+  tbody tr.new-player {
+    animation: flashGreen 2s ease-out;
+  }
+  @keyframes flashGreen {
+    0%   { background: rgba(74,222,128,0.18); }
+    100% { background: transparent; }
+  }
+  tbody td {
+    padding: 11px 14px;
+    font-family: "JetBrains Mono", monospace;
+    color: var(--text-0);
+    vertical-align: middle;
+  }
+  td.col-id { color: var(--text-2); width: 60px; }
+  td.col-name { font-family: "Bricolage Grotesque", sans-serif; font-weight: 500; }
+  td.col-ping { width: 80px; }
+  td.col-time { width: 130px; color: var(--text-1); }
+  td.col-session { width: 110px; color: var(--cyan); }
+
+  .player-main {
+    display: block;
+    line-height: 1.3;
+  }
+  .player-sub {
+    margin-top: 3px;
+    font-size: 11px;
+    font-family: "JetBrains Mono", monospace;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    line-height: 1.3;
+  }
+  .ic-tag {
+    color: var(--cyan);
+  }
+  .ic-tag::before {
+    content: "IC ";
+    color: var(--text-3);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    margin-right: 3px;
+  }
+  .dc-tag {
+    color: #8a93f0;            /* slightly muted Discord blurple */
+    text-decoration: none;
+    transition: color 0.1s;
+  }
+  .dc-tag:hover { color: #b1b8ff; }
+  .dc-tag::before {
+    content: "DC ";
+    color: var(--text-3);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    margin-right: 3px;
+  }
+  .ic-missing {
+    color: var(--text-3);
+    font-style: italic;
+    opacity: 0.5;
+  }
+
+  .ping-bar {
+    display: inline-flex; gap: 2px; align-items: flex-end;
+    height: 12px;
+  }
+  .ping-bar span {
+    width: 3px; background: var(--text-3); border-radius: 1px;
+  }
+  .ping-bar span:nth-child(1){ height: 4px; }
+  .ping-bar span:nth-child(2){ height: 7px; }
+  .ping-bar span:nth-child(3){ height: 10px; }
+  .ping-bar span:nth-child(4){ height: 13px; }
+  .ping-bar.ping-1 span:nth-child(-n+1){ background: var(--red); }
+  .ping-bar.ping-2 span:nth-child(-n+2){ background: var(--yellow); }
+  .ping-bar.ping-3 span:nth-child(-n+3){ background: var(--cyan); }
+  .ping-bar.ping-4 span:nth-child(-n+4){ background: var(--green); }
+
+  .name-color-0,.name-color-7 { color: #ffffff; }
+  .name-color-1 { color: #ef4444; }
+  .name-color-2 { color: #4ade80; }
+  .name-color-3 { color: #facc15; }
+  .name-color-4 { color: #60a5fa; }
+  .name-color-5 { color: #4cd6e0; }
+  .name-color-6 { color: #e879f9; }
+  .name-color-8 { color: #ff7a1a; }
+  .name-color-9 { color: #94a3b8; }
+
+  .detail-row td {
+    background: var(--bg-2);
+    padding: 16px 20px;
+    color: var(--text-1);
+    border-top: 1px dashed var(--line-2);
+  }
+  .id-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+  }
+  .id-tag {
+    background: var(--bg-3); border: 1px solid var(--line);
+    border-radius: 6px; padding: 8px 12px;
+    font-size: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .id-tag .id-key {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--accent);
+    min-width: 60px;
+  }
+  .id-tag .id-val {
+    flex: 1; word-break: break-all; color: var(--text-0);
+  }
+  .id-tag button {
+    background: transparent; border: 1px solid var(--line);
+    color: var(--text-2); padding: 3px 7px; font-size: 10px;
+    border-radius: 4px; cursor: pointer;
+    font-family: "JetBrains Mono", monospace;
+  }
+  .id-tag button:hover { color: var(--text-0); border-color: var(--line-2); }
+
+  .empty {
+    padding: 60px 20px; text-align: center; color: var(--text-2);
+  }
+  .empty h3 { color: var(--text-1); font-weight: 500; margin: 0 0 6px; }
+
+  /* ─────────── Activity feed ─────────── */
+  .feed {
+    background: var(--bg-1); border: 1px solid var(--line);
+    border-radius: 10px;
+    height: fit-content;
+    max-height: calc(100vh - 380px);
+    display: flex; flex-direction: column;
+  }
+  .feed-head {
+    padding: 14px 18px; border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .feed-head h3 {
+    margin: 0; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.18em; color: var(--text-1); font-weight: 500;
+  }
+  .feed-list {
+    overflow-y: auto;
+    padding: 8px 0;
+    flex: 1;
+  }
+  .feed-list::-webkit-scrollbar { width: 6px; }
+  .feed-list::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 3px; }
+  .feed-item {
+    padding: 8px 18px;
+    font-size: 12px; font-family: "JetBrains Mono", monospace;
+    border-left: 2px solid transparent;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .feed-item.join  { border-left-color: var(--green); }
+  .feed-item.leave { border-left-color: var(--red); }
+  .feed-time { color: var(--text-3); font-size: 11px; min-width: 56px; }
+  .feed-tag {
+    font-size: 9px; padding: 1px 5px; border-radius: 3px;
+    font-weight: 700; letter-spacing: 0.1em;
+  }
+  .feed-tag.join  { background: rgba(74,222,128,0.15); color: var(--green); }
+  .feed-tag.leave { background: rgba(239,68,68,0.15);  color: var(--red); }
+  .feed-name { color: var(--text-0); }
+
+  /* ─────────── Status footer ─────────── */
+  .status-bar {
+    margin-top: 14px;
+    padding: 10px 16px;
+    background: var(--bg-1); border: 1px solid var(--line);
+    border-radius: 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px; color: var(--text-2);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px;
+  }
+  .status-bar a { color: var(--text-1); }
+
+  /* ─────────── Spinner / no-server state ─────────── */
+  .splash {
+    text-align: center; padding: 80px 20px;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    background: var(--bg-1);
+  }
+  .splash h2 {
+    font-weight: 500; letter-spacing: -0.02em;
+    margin: 0 0 8px;
+  }
+  .splash p { color: var(--text-1); max-width: 540px; margin: 0 auto; }
+  .splash .arrow {
+    display: inline-block; margin-top: 22px; color: var(--accent);
+    font-family: "JetBrains Mono", monospace; font-size: 13px;
+  }
+  .scan {
+    width: 60px; height: 60px; margin: 0 auto 18px;
+    border: 2px solid var(--line); border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1.2s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      FiveM&nbsp;Monitor <small>// LIVE DISPATCH</small>
+    </div>
+    <div class="controls">
+      <input id="serverIdInput" class="input" placeholder="Server ID  (z.B. abcd12)" autocomplete="off" />
+      <select id="intervalSelect" class="select" title="Refresh-Intervall">
+        <option value="5">5s</option>
+        <option value="10" selected>10s</option>
+        <option value="20">20s</option>
+        <option value="30">30s</option>
+        <option value="60">60s</option>
+      </select>
+      <button id="connectBtn" class="btn btn-primary">Verbinden</button>
+      <button id="pauseBtn" class="btn btn-ghost" title="Pause/Resume">⏸</button>
+      <button id="settingsBtn" class="btn btn-ghost" title="Einstellungen">⚙</button>
+    </div>
+  </div>
+  <div id="settingsPanel" class="settings-panel" style="display:none;">
+    <div class="settings-inner">
+      <div class="setting-row">
+        <label>
+          <span class="setting-label">Eigener Proxy</span>
+          <span class="setting-hint">URL deines Cloudflare Workers (oder anderer Proxy). Wenn gesetzt, wird er vor allen anderen versucht. Du brauchst <code>{url}</code> als Platzhalter — Tool ersetzt das durch die Cfx.re-URL.</span>
+        </label>
+        <input id="customProxyInput" class="input mono" style="min-width:480px;" placeholder="https://dein-worker.workers.dev/?url={url}" autocomplete="off" />
+        <button id="saveProxyBtn" class="btn btn-primary" style="white-space:nowrap;">Speichern</button>
+      </div>
+      <div id="proxyStatus" class="setting-status"></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- Stat-Karten -->
+  <section class="grid-top">
+    <div class="card server-card">
+      <div class="card-label">Server</div>
+      <div class="hostname" id="hostname">— nicht verbunden —</div>
+      <div class="project-desc" id="projectDesc"></div>
+      <div class="meta">
+        <span><b id="gametype">—</b> · Mode</span>
+        <span><b id="mapname">—</b> · Map</span>
+        <span><b id="localeFlag">—</b></span>
+        <span id="resourceCount" style="color:var(--text-2)"></span>
+        <span id="statusPill"><span class="pill"><span class="pill-dot"></span>idle</span></span>
+      </div>
+      <div class="owner-row" id="ownerRow"></div>
+      <div class="tag-row" id="tagRow"></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Online</div>
+      <div class="card-value mono"><span id="curPlayers">0</span><small>/<span id="maxPlayers">0</span></small></div>
+      <div class="card-sub">aktive Slots</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Peak (Session)</div>
+      <div class="card-value mono" id="peakPlayers">0</div>
+      <div class="card-sub" id="peakTime">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Avg. Ping</div>
+      <div class="card-value mono"><span id="avgPing">—</span><small>ms</small></div>
+      <div class="card-sub">über alle Spieler</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Tracking</div>
+      <div class="card-value mono" id="trackedSince">—</div>
+      <div class="card-sub" id="lastUpdate">—</div>
+    </div>
+  </section>
+
+  <!-- Toolbar -->
+  <section class="toolbar">
+    <input id="searchInput" class="input" placeholder="Suche: FiveM-Name, IC-Name, Discord-ID, Server-ID…" />
+    <label class="checkbox-wrap"><input type="checkbox" id="hideShortToggle" /> kurze Sessions ausblenden (&lt; 30s)</label>
+    <label class="checkbox-wrap"><input type="checkbox" id="soundToggle" /> Sound bei Join/Leave</label>
+  </section>
+
+  <!-- Hauptbereich -->
+  <section class="split">
+
+    <!-- Tabelle -->
+    <div class="table-wrap" id="tableWrap">
+      <div class="splash" id="splash">
+        <div class="scan"></div>
+        <h2>Bereit zum Verbinden</h2>
+        <p>Gib oben die <span class="mono">Server ID</span> eines FiveM-Servers ein (der kurze Cfx.re-Code aus der Server-URL, z.&nbsp;B. <span class="mono">5xdjqr</span>) und klick auf <b>Verbinden</b>. Das Tool pollt die offizielle Cfx.re-API und trackt ab dann live wer joint, wer geht und wie lange jeder schon online ist.</p>
+        <div class="arrow">↑ Server ID oben eingeben</div>
+      </div>
+    </div>
+
+    <!-- Activity Feed -->
+    <aside class="feed" id="feedPanel" style="display:none;">
+      <div class="feed-head">
+        <h3>Activity Log</h3>
+        <button class="btn btn-ghost mono" id="clearFeedBtn" style="font-size:11px; padding:4px 10px;">clear</button>
+      </div>
+      <div class="feed-list" id="feedList"></div>
+    </aside>
+
+  </section>
+
+  <div class="status-bar">
+    <span>Quelle: <a href="https://servers.fivem.net/" target="_blank" rel="noopener">servers-frontend.fivem.net</a> · Daten werden lokal im Browser zwischengespeichert (kein Backend).</span>
+    <span id="connectionMeta">—</span>
+  </div>
+</main>
+
+<script>
+/* =================================================================
+ * FiveM Player Monitor
+ * Polls the public Cfx.re server-frontend API for a given server ID
+ * and tracks player presence locally to derive join time / session.
+ * ================================================================= */
+
+const DIRECT_API = id => `https://servers-frontend.fivem.net/api/servers/single/${encodeURIComponent(id)}`;
+
+/* Proxy chain. We try these in order if the direct call (or current one) fails.
+ *
+ * Notes (May 2026 — public proxies are notoriously flaky, this list is best-effort):
+ * - cors.lol: simple, free, no signup, accepts Origin: null
+ * - codetabs: rate-limited (~5 req/min) but stable, used as backup
+ * - corsfix: free for dev, 60 req/min, no signup
+ * - allorigins: classic option, occasionally returns 5xx when overloaded
+ * - killcors and corsproxy.io intentionally NOT here — both unreliable / require auth
+ *
+ * If proxies all fail, the user is much better off hosting locally; the error
+ * UI nudges them in that direction. */
+const PROXIES = [
+  { name: 'cors.lol',    wrap: u => `https://api.cors.lol/?url=${encodeURIComponent(u)}` },
+  { name: 'codetabs',    wrap: u => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}` },
+  { name: 'corsfix',     wrap: u => `https://proxy.corsfix.com/?${u}` },
+  { name: 'allorigins',  wrap: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
+];
+
+const IS_FILE_ORIGIN = location.protocol === 'file:';
+const FETCH_TIMEOUT_MS = 6000; // each attempt gets at most 6s before we move to next proxy
+
+/* Smart fetch with timeout that tries direct first (when on http(s)://),
+ * then falls through proxies. Remembers last working proxy for next poll.
+ * Sentinel values for preferredFetcher:
+ *   -2 = custom user proxy
+ *   -1 = direct
+ *    0..N = PROXIES[i] */
+let preferredFetcher = -1;
+// Set after we've parsed localStorage in the init block below
+
+function fetchWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { cache: 'no-store', signal: ctrl.signal })
+    .finally(() => clearTimeout(timer));
+}
+
+async function fetchServer(id, onProgress) {
+  const direct = DIRECT_API(id);
+  const order = [];
+
+  // Custom user proxy: always first if set
+  if (customProxyTemplate) {
+    order.push({
+      name: 'custom',
+      url: customProxyTemplate.replace('{url}', encodeURIComponent(direct)),
+      idx: -2
+    });
+  }
+
+  if (preferredFetcher === -1) {
+    order.push({ name: 'direct', url: direct, idx: -1 });
+    PROXIES.forEach((p, i) => order.push({ name: p.name, url: p.wrap(direct), idx: i }));
+  } else if (preferredFetcher === -2) {
+    // custom already added above; add the rest as fallbacks
+    if (!IS_FILE_ORIGIN) order.push({ name: 'direct', url: direct, idx: -1 });
+    PROXIES.forEach((p, i) => order.push({ name: p.name, url: p.wrap(direct), idx: i }));
+  } else {
+    const p = PROXIES[preferredFetcher];
+    order.push({ name: p.name, url: p.wrap(direct), idx: preferredFetcher });
+    PROXIES.forEach((q, i) => { if (i !== preferredFetcher) order.push({ name: q.name, url: q.wrap(direct), idx: i }); });
+    if (!IS_FILE_ORIGIN) order.push({ name: 'direct', url: direct, idx: -1 });
+  }
+
+  const errors = [];
+  for (const attempt of order) {
+    if (onProgress) onProgress(attempt.name);
+    try {
+      const res = await fetchWithTimeout(attempt.url, FETCH_TIMEOUT_MS);
+      if (!res.ok) { errors.push(`${attempt.name}: HTTP ${res.status}`); continue; }
+      const text = await res.text();
+      // some proxies wrap or return error pages — guard against non-JSON
+      let json;
+      try { json = JSON.parse(text); }
+      catch { errors.push(`${attempt.name}: non-JSON response (${text.slice(0,60)}…)`); continue; }
+      if (!json || !json.Data) { errors.push(`${attempt.name}: invalid response shape`); continue; }
+      preferredFetcher = attempt.idx;
+      return { data: json, via: attempt.name };
+    } catch (e) {
+      const msg = e.name === 'AbortError' ? `timeout (${FETCH_TIMEOUT_MS}ms)` : (e.message || String(e));
+      errors.push(`${attempt.name}: ${msg}`);
+    }
+  }
+  const err = new Error(errors.join(' · '));
+  err.allErrors = errors;
+  throw err;
+}
+
+const $ = sel => document.querySelector(sel);
+
+/* ---------- State ---------- */
+const state = {
+  serverId:   null,
+  intervalMs: 10000,
+  timer:      null,
+  paused:     false,
+  // sessions: id -> { firstSeen, lastSeen, name, ping, identifiers }
+  sessions:   new Map(),
+  feed:       [],          // [{t, type:'join'|'leave', name, id}]
+  peak:       0,
+  peakAt:     null,
+  trackedSince: null,
+  sortKey:    'session',   // session | id | name | ping | first
+  sortDir:    'desc',
+  expanded:   new Set(),
+  lastError:  null,
+  lastUpdate: null,
+};
+
+/* ---------- LocalStorage for last server id ---------- */
+const LS_KEY = 'fivem-monitor-serverId';
+const savedId = localStorage.getItem(LS_KEY);
+if (savedId) $('#serverIdInput').value = savedId;
+
+/* ---------- Custom Proxy (user's own Cloudflare Worker etc.) ---------- */
+const LS_PROXY_KEY = 'fivem-monitor-customProxy';
+let customProxyTemplate = localStorage.getItem(LS_PROXY_KEY) || '';
+if (customProxyTemplate) $('#customProxyInput').value = customProxyTemplate;
+
+// Initial fetcher preference: custom > file-origin-proxy > direct
+if (customProxyTemplate)      preferredFetcher = -2;
+else if (IS_FILE_ORIGIN)      preferredFetcher = 0;
+else                          preferredFetcher = -1;
+
+$('#settingsBtn').addEventListener('click', () => {
+  const p = $('#settingsPanel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+});
+$('#saveProxyBtn').addEventListener('click', async () => {
+  const tpl = $('#customProxyInput').value.trim();
+  const status = $('#proxyStatus');
+  if (!tpl) {
+    customProxyTemplate = '';
+    localStorage.removeItem(LS_PROXY_KEY);
+    status.className = 'setting-status';
+    status.textContent = '✓ Eigener Proxy entfernt — Tool nutzt wieder nur Public-Proxies.';
+    return;
+  }
+  if (!tpl.includes('{url}')) {
+    status.className = 'setting-status err';
+    status.textContent = '✗ URL muss {url} als Platzhalter enthalten, z.B. https://dein-worker.workers.dev/?url={url}';
+    return;
+  }
+  // Quick health check: fire a test request against a known server
+  status.className = 'setting-status';
+  status.textContent = '⟳ Teste Proxy…';
+  try {
+    const testUrl = tpl.replace('{url}', encodeURIComponent(DIRECT_API('5xdjqr')));
+    const r = await fetchWithTimeout(testUrl, 8000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = JSON.parse(await r.text());
+    if (!j.Data) throw new Error('Unerwartete Antwort');
+    customProxyTemplate = tpl;
+    localStorage.setItem(LS_PROXY_KEY, tpl);
+    preferredFetcher = -2; // sentinel for "use custom proxy first"
+    status.className = 'setting-status ok';
+    status.textContent = `✓ Proxy funktioniert! (${j.Data.hostname ? stripColor(j.Data.hostname).slice(0,50) : 'OK'}) Wird ab jetzt bevorzugt verwendet.`;
+  } catch (e) {
+    status.className = 'setting-status err';
+    status.textContent = `✗ Proxy-Test fehlgeschlagen: ${e.message || e}`;
+  }
+});
+
+/* ---------- Helpers ---------- */
+function fmtDuration(ms) {
+  if (ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h) return `${h}h ${m.toString().padStart(2,'0')}m`;
+  if (m) return `${m}m ${sec.toString().padStart(2,'0')}s`;
+  return `${sec}s`;
+}
+function fmtClock(d) {
+  return d.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}
+function fmtClockShort(d) {
+  return d.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+}
+
+/* Parse FiveM color codes like ^1Hello^7 World */
+function renderName(raw) {
+  if (!raw) return '<span class="name-color-7">&lt;unbekannt&gt;</span>';
+  const out = [];
+  let cur = '7';
+  let buf = '';
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === '^' && /[0-9]/.test(raw[i+1])) {
+      if (buf) out.push(`<span class="name-color-${cur}">${escapeHtml(buf)}</span>`);
+      cur = raw[i+1]; buf = ''; i++;
+    } else {
+      buf += raw[i];
+    }
+  }
+  if (buf) out.push(`<span class="name-color-${cur}">${escapeHtml(buf)}</span>`);
+  return out.join('');
+}
+function stripColor(raw) { return (raw || '').replace(/\^[0-9]/g, ''); }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[ch]));
+}
+
+function pingBucket(p) {
+  if (p === undefined || p === null || p < 0) return 0;
+  if (p < 50)  return 4;
+  if (p < 100) return 3;
+  if (p < 200) return 2;
+  return 1;
+}
+
+/* Try to extract an "IC name" (in-character / RP name) from the FiveM display
+ * name. There's no API field for this — many RP servers embed it in the player
+ * name itself. We test a few common patterns:
+ *   - explicit prefix: "IC: Max Mustermann", "RP: ...", "Name: ..."
+ *   - bracket tag + name: "[VIP] Max Mustermann"
+ *   - underscore form: "Max_Mustermann"
+ *   - two capitalized words: "Max Mustermann"
+ * Returns null if nothing convincing was found (probably just a Steam name). */
+function parseICName(rawName) {
+  if (!rawName) return null;
+  const s = stripColor(rawName).trim();
+
+  // Explicit prefix
+  let m = s.match(/(?:^|[\s|\-•·\[])(?:IC|RP|RPName|Name|Char)[:=\s]+\s*([A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß'\- _]{1,40})/i);
+  if (m) return m[1].trim().replace(/_/g, ' ');
+
+  // Two capitalized words (German/English first+last name pattern)
+  m = s.match(/\b([A-ZÄÖÜ][a-zäöüß]{1,18})[\s_]+([A-ZÄÖÜ][a-zäöüß]{1,20})\b/);
+  if (m) return `${m[1]} ${m[2]}`;
+
+  return null;
+}
+
+/* Extract the Discord user ID (snowflake) from a player's identifier list.
+ * Returns null if the server hides identifiers or if the player has no Discord
+ * linked to FiveM. */
+function getDiscordId(identifiers) {
+  if (!Array.isArray(identifiers)) return null;
+  const d = identifiers.find(i => typeof i === 'string' && i.startsWith('discord:'));
+  return d ? d.slice('discord:'.length) : null;
+}
+
+/* ---------- Status pill ---------- */
+function setStatus(kind, text) {
+  $('#statusPill').innerHTML =
+    `<span class="pill ${kind}"><span class="pill-dot"></span>${text}</span>`;
+}
+
+/* ---------- Connect ---------- */
+$('#connectBtn').addEventListener('click', () => {
+  const id = $('#serverIdInput').value.trim();
+  if (!id) return;
+  connectTo(id);
+});
+$('#serverIdInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') $('#connectBtn').click();
+});
+$('#intervalSelect').addEventListener('change', e => {
+  state.intervalMs = parseInt(e.target.value, 10) * 1000;
+  if (state.serverId && !state.paused) restartTimer();
+});
+$('#pauseBtn').addEventListener('click', () => {
+  state.paused = !state.paused;
+  $('#pauseBtn').textContent = state.paused ? '▶' : '⏸';
+  if (state.paused) {
+    clearInterval(state.timer); state.timer = null;
+    setStatus('warn','paused');
+  } else if (state.serverId) {
+    poll();
+    restartTimer();
+  }
+});
+$('#searchInput').addEventListener('input', renderTable);
+$('#hideShortToggle').addEventListener('change', renderTable);
+$('#clearFeedBtn').addEventListener('click', () => { state.feed = []; renderFeed(); });
+
+function connectTo(id) {
+  state.serverId = id;
+  localStorage.setItem(LS_KEY, id);
+  state.sessions.clear();
+  state.feed = [];
+  state.peak = 0;
+  state.peakAt = null;
+  state.trackedSince = new Date();
+  $('#trackedSince').textContent = fmtClockShort(state.trackedSince);
+  $('#feedPanel').style.display = 'flex';
+  setStatus('warn', 'verbinde…');
+  // immediately replace splash so user sees progress
+  $('#tableWrap').innerHTML = `
+    <div class="splash" id="connectingSplash">
+      <div class="scan"></div>
+      <h2>Verbinde mit <span class="mono" style="color:var(--accent)">${escapeHtml(id)}</span>…</h2>
+      <p>Versuche Cfx.re zu erreichen <span id="progressVia" class="mono" style="color:var(--text-1)"></span></p>
+      <div class="arrow mono" id="progressErrors" style="font-size:11px; color:var(--text-3); margin-top:18px; max-width:520px;"></div>
+    </div>`;
+  poll();
+  restartTimer();
+}
+function restartTimer() {
+  if (state.timer) clearInterval(state.timer);
+  state.timer = setInterval(poll, state.intervalMs);
+}
+
+/* ---------- Poll ---------- */
+async function poll() {
+  if (!state.serverId) return;
+  try {
+    const { data: json, via } = await fetchServer(state.serverId, name => {
+      const el = document.getElementById('progressVia');
+      if (el) el.textContent = ` → ${name}`;
+    });
+    handleData(json.Data, via);
+    state.lastError = null;
+    state.lastUpdate = new Date();
+    $('#lastUpdate').textContent = 'Last sync ' + fmtClock(state.lastUpdate) + (via !== 'direct' ? ` · via ${via}` : '');
+    setStatus('ok', via === 'direct' ? 'live' : `live · ${via}`);
+  } catch (err) {
+    state.lastError = err.message || String(err);
+    setStatus('err', 'fehler');
+    $('#connectionMeta').textContent = 'Fehler: ' + state.lastError;
+
+    if (state.sessions.size === 0) {
+      const errList = (err.allErrors || [state.lastError]).map(e =>
+        `<div style="padding:4px 0; color:var(--text-2);">• ${escapeHtml(e)}</div>`
+      ).join('');
+
+      const fileOriginNotice = IS_FILE_ORIGIN ? `
+        <div style="background:rgba(255,122,26,0.08); border:1px solid rgba(255,122,26,0.4); border-radius:8px; padding:18px 22px; margin:22px auto; max-width:620px; text-align:left;">
+          <div style="font-size:14px; color:var(--accent); font-weight:600; margin-bottom:8px;">⚠️ Du öffnest die Datei lokal (file://)</div>
+          <div style="color:var(--text-1); font-size:13px; line-height:1.6;">
+            Aus <span class="mono">file://</span> ist das Tool auf öffentliche CORS-Proxies angewiesen, und die sind notorisch unzuverlässig — gerade gehen anscheinend alle gleichzeitig nicht. Das löst sich permanent, sobald du die Datei lokal hostest:
+          </div>
+          <div style="margin-top:14px;">
+            <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.15em; color:var(--text-2); margin-bottom:6px;">→ Schnellster Fix (30 Sekunden)</div>
+            <div style="background:var(--bg-3); padding:10px 14px; border-radius:6px; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--cyan); margin-bottom:6px;">
+              cd "C:\\Users\\Anwender\\Downloads"<br>
+              python -m http.server 8080
+            </div>
+            <div style="color:var(--text-2); font-size:12px;">Dann im Browser öffnen:&nbsp; <span class="mono" style="color:var(--accent-2)">http://localhost:8080/fivem-player-monitor_3.html</span></div>
+          </div>
+          <div style="margin-top:14px; color:var(--text-2); font-size:12px;">
+            Kein Python? → VS Code installieren, Extension <b>Live Server</b>, Rechtsklick auf die HTML → "Open with Live Server". Oder Datei auf <a href="https://app.netlify.com/drop" target="_blank" rel="noopener" style="color:var(--accent);">netlify.com/drop</a> ziehen, fertig in 10 Sekunden.
+          </div>
+        </div>` : '';
+
+      $('#tableWrap').innerHTML = `
+        <div class="splash">
+          <h2 style="color:var(--red)">Verbindung fehlgeschlagen</h2>
+          <p>Alle ${PROXIES.length} CORS-Proxies haben Daten für <span class="mono">${escapeHtml(state.serverId)}</span> abgelehnt.</p>
+          ${fileOriginNotice}
+          <div style="margin-top:18px; color:var(--text-2); font-size:12px;">
+            <a href="https://servers.fivem.net/servers/detail/${encodeURIComponent(state.serverId)}" target="_blank" rel="noopener" style="color:var(--accent)">↗ Server-ID auf cfx.re prüfen</a>
+            &nbsp;·&nbsp;
+            <a href="#" id="retryBtn" style="color:var(--accent)">↻ Nochmal versuchen</a>
+          </div>
+          <details style="margin-top:18px; text-align:left; max-width:620px; margin-left:auto; margin-right:auto;">
+            <summary style="cursor:pointer; color:var(--text-2); font-family:'JetBrains Mono',monospace; font-size:11px;">Details aller Versuche</summary>
+            <div style="background:var(--bg-2); padding:12px; border-radius:6px; font-size:11px; color:var(--text-1); margin-top:8px; font-family:'JetBrains Mono',monospace;">${errList}</div>
+          </details>
+        </div>`;
+
+      const retry = document.getElementById('retryBtn');
+      if (retry) retry.addEventListener('click', e => { e.preventDefault(); poll(); });
+    }
+  }
+}
+
+/* ---------- Process snapshot ---------- */
+function handleData(data, via) {
+  // Server info
+  $('#hostname').innerHTML    = renderName(data.hostname) || '—';
+  $('#gametype').textContent  = data.gametype || '—';
+  $('#mapname').textContent   = data.mapname  || '—';
+  $('#curPlayers').textContent = data.clients ?? (data.players?.length ?? 0);
+  $('#maxPlayers').textContent = data.sv_maxclients ?? data.svMaxclients ?? '?';
+
+  const vars = data.vars || {};
+
+  // Project description (sv_projectDesc) — separate line
+  const projDesc = vars.sv_projectDesc || '';
+  $('#projectDesc').innerHTML = projDesc ? renderName(projDesc) : '';
+
+  // Locale flag/string
+  const locale = vars.locale || '';
+  $('#localeFlag').textContent = locale ? `🌐 ${locale}` : '—';
+
+  // Resource count
+  const resCount = (data.resources || []).length;
+  $('#resourceCount').textContent = resCount ? `📦 ${resCount} Resources` : '';
+
+  // Owner
+  const ownerRow = $('#ownerRow');
+  if (data.ownerName) {
+    const avatar = data.ownerAvatar ? `<img src="${escapeHtml(data.ownerAvatar)}" alt="" onerror="this.style.display='none'">` : '';
+    const profile = data.ownerProfile
+      ? `<a href="${escapeHtml(data.ownerProfile)}" target="_blank" rel="noopener">${escapeHtml(data.ownerName)}</a>`
+      : escapeHtml(data.ownerName);
+    const endpoint = (data.connectEndPoints && data.connectEndPoints[0]) || '';
+    const txAdmin = vars['txAdmin-version'] ? ` · txAdmin ${escapeHtml(vars['txAdmin-version'])}` : '';
+    const buildVer = vars.sv_enforceGameBuild ? ` · build ${escapeHtml(vars.sv_enforceGameBuild)}` : '';
+    ownerRow.innerHTML = `
+      ${avatar}
+      <span style="color:var(--text-2)">Owner</span>
+      <span>${profile}</span>
+      <span style="margin-left:auto; color:var(--text-3); font-family:'JetBrains Mono',monospace; font-size:11px;">
+        ${endpoint ? `<span title="Connect Endpoint">${escapeHtml(endpoint)}</span>` : ''}
+        ${txAdmin}${buildVer}
+      </span>`;
+  } else {
+    ownerRow.innerHTML = '';
+  }
+
+  // Tags
+  const tagRow = $('#tagRow');
+  const rawTags = (vars.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+  if (rawTags.length) {
+    tagRow.innerHTML = rawTags.slice(0, 12).map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('');
+  } else {
+    tagRow.innerHTML = '';
+  }
+
+  $('#connectionMeta').textContent =
+    `cfx.re/join/${state.serverId} · poll alle ${state.intervalMs/1000}s${via && via !== 'direct' ? ' · via ' + via : ''}`;
+
+  // Peak
+  const cur = data.clients ?? (data.players?.length ?? 0);
+  if (cur > state.peak) {
+    state.peak = cur;
+    state.peakAt = new Date();
+    $('#peakPlayers').textContent = state.peak;
+    $('#peakTime').textContent = 'erreicht ' + fmtClock(state.peakAt);
+  }
+
+  // Sessions diff
+  const now    = Date.now();
+  const players = data.players || [];
+  const seenIds = new Set();
+
+  // ping average
+  let pingSum = 0, pingN = 0;
+
+  for (const p of players) {
+    const pid = String(p.id);
+    seenIds.add(pid);
+    if (typeof p.ping === 'number' && p.ping >= 0) { pingSum += p.ping; pingN++; }
+
+    const existing = state.sessions.get(pid);
+    if (existing) {
+      existing.lastSeen    = now;
+      existing.name        = p.name;
+      existing.ping        = p.ping;
+      existing.identifiers = p.identifiers || existing.identifiers;
+    } else {
+      const isFirstPoll = state.feed.length === 0 && state.sessions.size === 0;
+      state.sessions.set(pid, {
+        firstSeen:   now,
+        lastSeen:    now,
+        name:        p.name,
+        ping:        p.ping,
+        identifiers: p.identifiers || [],
+        // If this is the very first poll, the player was already on the server
+        // before we started tracking — flag accordingly so we don't spam joins.
+        synthetic:   isFirstPoll
+      });
+      if (!isFirstPoll) {
+        addFeed('join', pid, p.name);
+        playSound('join');
+      }
+    }
+  }
+  // Detect leavers
+  for (const [pid, sess] of state.sessions) {
+    if (!seenIds.has(pid) && sess.lastSeen >= now - state.intervalMs - 2000 && !sess.left) {
+      // Mark as left, but keep in map for "session ended" display? -> we just remove and log
+      sess.left = true;
+      addFeed('leave', pid, sess.name);
+      playSound('leave');
+      state.sessions.delete(pid);
+    } else if (!seenIds.has(pid)) {
+      // older entry, probably already removed; skip
+    }
+  }
+
+  $('#avgPing').textContent = pingN ? Math.round(pingSum / pingN) : '—';
+
+  renderTable();
+  renderFeed();
+}
+
+/* ---------- Feed ---------- */
+function addFeed(type, id, name) {
+  state.feed.unshift({ t: new Date(), type, id, name });
+  if (state.feed.length > 200) state.feed.pop();
+}
+function renderFeed() {
+  const list = $('#feedList');
+  if (!state.feed.length) {
+    list.innerHTML = `<div style="padding:18px; color:var(--text-3); font-family:'JetBrains Mono',monospace; font-size:11px;">// noch keine Aktivität</div>`;
+    return;
+  }
+  list.innerHTML = state.feed.map(f => `
+    <div class="feed-item ${f.type}">
+      <span class="feed-time">${fmtClockShort(f.t)}</span>
+      <span class="feed-tag ${f.type}">${f.type === 'join' ? 'JOIN' : 'LEAVE'}</span>
+      <span class="feed-name">${renderName(f.name)} <span style="color:var(--text-3)">#${escapeHtml(f.id)}</span></span>
+    </div>
+  `).join('');
+}
+
+/* ---------- Sound (very short beep, generated) ---------- */
+let audioCtx = null;
+function playSound(kind) {
+  if (!$('#soundToggle').checked) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.frequency.value = kind === 'join' ? 880 : 380;
+    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.15, audioCtx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.18);
+    o.start(); o.stop(audioCtx.currentTime + 0.2);
+  } catch (e) { /* ignore */ }
+}
+
+/* ---------- Render Table ---------- */
+function renderTable() {
+  const wrap = $('#tableWrap');
+  if (!state.serverId) return;
+
+  const search = $('#searchInput').value.trim().toLowerCase();
+  const hideShort = $('#hideShortToggle').checked;
+  const now = Date.now();
+
+  let rows = [...state.sessions.entries()].map(([id, s]) => ({
+    id,
+    name: s.name,
+    plain: stripColor(s.name).toLowerCase(),
+    ic: parseICName(s.name),
+    discord: getDiscordId(s.identifiers),
+    ping: s.ping ?? -1,
+    firstSeen: s.firstSeen,
+    sessionMs: now - s.firstSeen,
+    identifiers: s.identifiers || [],
+    synthetic: !!s.synthetic,
+  }));
+
+  if (search) {
+    rows = rows.filter(r =>
+      r.plain.includes(search) ||
+      r.id.includes(search) ||
+      (r.ic && r.ic.toLowerCase().includes(search)) ||
+      (r.discord && r.discord.includes(search))
+    );
+  }
+  if (hideShort) {
+    rows = rows.filter(r => r.sessionMs >= 30000);
+  }
+
+  rows.sort((a,b) => {
+    let av, bv;
+    switch (state.sortKey) {
+      case 'id':      av = parseInt(a.id); bv = parseInt(b.id); break;
+      case 'name':    av = a.plain;        bv = b.plain;        break;
+      case 'ping':    av = a.ping;         bv = b.ping;         break;
+      case 'first':   av = a.firstSeen;    bv = b.firstSeen;    break;
+      case 'session':
+      default:        av = a.sessionMs;    bv = b.sessionMs;    break;
+    }
+    if (av < bv) return state.sortDir === 'asc' ? -1 : 1;
+    if (av > bv) return state.sortDir === 'asc' ?  1 : -1;
+    return 0;
+  });
+
+  if (!rows.length) {
+    wrap.innerHTML = `
+      <div class="empty">
+        <h3>Keine Spieler im Filter</h3>
+        <div>Versuch's mit einem anderen Suchbegriff oder warte auf den nächsten Sync.</div>
+      </div>`;
+    return;
+  }
+
+  const arrow = k => state.sortKey === k ? `<span class="sort-arrow">${state.sortDir==='asc'?'↑':'↓'}</span>` : '';
+
+  const html = `
+    <table>
+      <thead>
+        <tr>
+          <th data-sort="id">ID ${arrow('id')}</th>
+          <th data-sort="name">Spieler ${arrow('name')}</th>
+          <th data-sort="ping">Ping ${arrow('ping')}</th>
+          <th data-sort="first">Join Time ${arrow('first')}</th>
+          <th data-sort="session">Session ${arrow('session')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => renderRow(r)).join('')}
+      </tbody>
+    </table>`;
+  wrap.innerHTML = html;
+
+  // sort header handlers
+  wrap.querySelectorAll('th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const k = th.dataset.sort;
+      if (state.sortKey === k) {
+        state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.sortKey = k;
+        state.sortDir = (k === 'name' || k === 'id') ? 'asc' : 'desc';
+      }
+      renderTable();
+    });
+  });
+
+  // row click -> expand
+  wrap.querySelectorAll('tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const id = tr.dataset.id;
+      if (state.expanded.has(id)) state.expanded.delete(id);
+      else state.expanded.add(id);
+      renderTable();
+    });
+  });
+
+  // copy buttons
+  wrap.querySelectorAll('button[data-copy]').forEach(b => {
+    b.addEventListener('click', e => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(b.dataset.copy);
+      const orig = b.textContent; b.textContent = 'kopiert';
+      setTimeout(() => b.textContent = orig, 1100);
+    });
+  });
+}
+
+function renderRow(r) {
+  const ping = r.ping >= 0 ? r.ping : '—';
+  const pb = pingBucket(r.ping);
+  const firstSeenDate = new Date(r.firstSeen);
+  const firstSeenText = r.synthetic
+    ? `<span title="war schon online als wir zu tracken begannen" style="color:var(--text-3)">≥ ${fmtClock(firstSeenDate)}</span>`
+    : fmtClock(firstSeenDate);
+
+  const expanded = state.expanded.has(r.id);
+  const flashClass = (Date.now() - r.firstSeen < 4000 && !r.synthetic) ? ' new-player' : '';
+
+  let detail = '';
+  if (expanded) {
+    const idsByKind = {};
+    for (const ident of r.identifiers) {
+      const [kind, ...rest] = ident.split(':');
+      idsByKind[kind] = rest.join(':');
+    }
+    const known = ['steam','discord','license','license2','fivem','live','xbl','ip'];
+    const order = [...known.filter(k => idsByKind[k]), ...Object.keys(idsByKind).filter(k => !known.includes(k))];
+    detail = `
+      <tr class="detail-row">
+        <td colspan="5">
+          ${r.identifiers.length ? `
+            <div class="id-grid">
+              ${order.map(k => `
+                <div class="id-tag">
+                  <span class="id-key">${escapeHtml(k)}</span>
+                  <span class="id-val mono">${escapeHtml(idsByKind[k])}</span>
+                  <button data-copy="${escapeHtml(idsByKind[k])}">copy</button>
+                </div>
+              `).join('')}
+            </div>` : `
+            <div style="display:flex; gap:12px; align-items:center; color:var(--text-2); font-size:12px;">
+              <span style="font-size:18px;">🔒</span>
+              <div>
+                <div style="color:var(--text-1); margin-bottom:2px;">Identifier vom Server-Owner versteckt</div>
+                <div style="font-size:11px;">Dieser Server liefert <span class="mono">identifiers: []</span> in der API zurück — Steam-, Discord- und License-IDs der Spieler werden bewusst nicht öffentlich gemacht (gängige Privacy-Einstellung bei RP-Servern).</div>
+              </div>
+            </div>`
+          }
+        </td>
+      </tr>`;
+  }
+
+  // Sub-line under the FiveM name: IC name + Discord (when available)
+  const subParts = [];
+  if (r.ic) {
+    subParts.push(`<span class="ic-tag">${escapeHtml(r.ic)}</span>`);
+  }
+  if (r.discord) {
+    // discord://discordapp.com/users/<id> opens the Discord desktop app to that user
+    subParts.push(
+      `<a class="dc-tag" href="discord://discordapp.com/users/${escapeHtml(r.discord)}" ` +
+      `onclick="event.stopPropagation()" title="In Discord öffnen · ${escapeHtml(r.discord)}">` +
+      `${escapeHtml(r.discord)}</a>`
+    );
+  }
+  const subLine = subParts.length
+    ? `<div class="player-sub">${subParts.join('')}</div>`
+    : '';
+
+  return `
+    <tr data-id="${escapeHtml(r.id)}" class="${expanded?'expanded':''}${flashClass}">
+      <td class="col-id mono">#${escapeHtml(r.id)}</td>
+      <td class="col-name">
+        <div class="player-main">${renderName(r.name)}</div>
+        ${subLine}
+      </td>
+      <td class="col-ping mono"><span class="ping-bar ping-${pb}"><span></span><span></span><span></span><span></span></span> ${ping}</td>
+      <td class="col-time">${firstSeenText}</td>
+      <td class="col-session mono">${fmtDuration(r.sessionMs)}</td>
+    </tr>
+    ${detail}
+  `;
+}
+
+/* ---------- Live tick (re-render durations every 1s) ---------- */
+setInterval(() => {
+  if (state.serverId && state.sessions.size > 0 && !state.paused) renderTable();
+}, 1000);
+
+/* ---------- Auto-connect if URL has ?serverId= ---------- */
+const params = new URLSearchParams(location.search);
+const urlId = params.get('serverId') || params.get('id');
+if (urlId) {
+  $('#serverIdInput').value = urlId;
+  setTimeout(() => connectTo(urlId), 200);
+}
+</script>
+</body>
+</html>
