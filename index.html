@@ -634,14 +634,14 @@ const PROXIES = [
 const IS_FILE_ORIGIN = location.protocol === 'file:';
 const FETCH_TIMEOUT_MS = 6000; // each attempt gets at most 6s before we move to next proxy
 
-/* Smart fetch with timeout that tries direct first (when on http(s)://),
- * then falls through proxies. Remembers last working proxy for next poll.
- * Sentinel values for preferredFetcher:
- *   -2 = custom user proxy
- *   -1 = direct
- *    0..N = PROXIES[i] */
-let preferredFetcher = -1;
-// Set after we've parsed localStorage in the init block below
+/* Smart fetch with timeout. Tries in priority order:
+ *   -3 = same-origin /api/cfx (Vercel/Netlify deployment — fastest, most stable)
+ *   -2 = custom user proxy (Cloudflare Worker etc.)
+ *   -1 = direct call to Cfx.re (only works if Cfx.re sends CORS headers)
+ *    0..N = public CORS proxies (flaky, but free fallback)
+ *
+ * Once one works, it's remembered for subsequent polls. */
+let preferredFetcher = null;
 
 function fetchWithTimeout(url, ms) {
   const ctrl = new AbortController();
@@ -652,44 +652,52 @@ function fetchWithTimeout(url, ms) {
 
 async function fetchServer(id, onProgress) {
   const direct = DIRECT_API(id);
-  const order = [];
 
-  // Custom user proxy: always first if set
-  if (customProxyTemplate) {
-    order.push({
-      name: 'custom',
-      url: customProxyTemplate.replace('{url}', encodeURIComponent(direct)),
-      idx: -2
-    });
+  // Build all available attempts as a lookup by index
+  const attempts = {};
+  if (!IS_FILE_ORIGIN) {
+    attempts[-3] = { name: 'self', url: `/api/cfx?id=${encodeURIComponent(id)}` };
   }
+  if (customProxyTemplate) {
+    attempts[-2] = { name: 'custom', url: customProxyTemplate.replace('{url}', encodeURIComponent(direct)) };
+  }
+  if (!IS_FILE_ORIGIN) {
+    attempts[-1] = { name: 'direct', url: direct };
+  }
+  PROXIES.forEach((p, i) => {
+    attempts[i] = { name: p.name, url: p.wrap(direct) };
+  });
 
-  if (preferredFetcher === -1) {
-    order.push({ name: 'direct', url: direct, idx: -1 });
-    PROXIES.forEach((p, i) => order.push({ name: p.name, url: p.wrap(direct), idx: i }));
-  } else if (preferredFetcher === -2) {
-    // custom already added above; add the rest as fallbacks
-    if (!IS_FILE_ORIGIN) order.push({ name: 'direct', url: direct, idx: -1 });
-    PROXIES.forEach((p, i) => order.push({ name: p.name, url: p.wrap(direct), idx: i }));
-  } else {
-    const p = PROXIES[preferredFetcher];
-    order.push({ name: p.name, url: p.wrap(direct), idx: preferredFetcher });
-    PROXIES.forEach((q, i) => { if (i !== preferredFetcher) order.push({ name: q.name, url: q.wrap(direct), idx: i }); });
-    if (!IS_FILE_ORIGIN) order.push({ name: 'direct', url: direct, idx: -1 });
+  // Default priority: self > custom > direct > public proxies
+  const defaultOrder = [-3, -2, -1, ...PROXIES.map((_, i) => i)].filter(idx => attempts[idx]);
+
+  // If we have a known-good fetcher, try it first
+  let order = defaultOrder;
+  if (preferredFetcher !== null && attempts[preferredFetcher]) {
+    order = [preferredFetcher, ...defaultOrder.filter(idx => idx !== preferredFetcher)];
   }
 
   const errors = [];
-  for (const attempt of order) {
+  for (const idx of order) {
+    const attempt = attempts[idx];
     if (onProgress) onProgress(attempt.name);
     try {
       const res = await fetchWithTimeout(attempt.url, FETCH_TIMEOUT_MS);
-      if (!res.ok) { errors.push(`${attempt.name}: HTTP ${res.status}`); continue; }
+      if (!res.ok) {
+        // Special case: 404 on /api/cfx means "not deployed on Vercel" — skip quietly
+        if (idx === -3 && res.status === 404) {
+          errors.push('self: not deployed');
+          continue;
+        }
+        errors.push(`${attempt.name}: HTTP ${res.status}`);
+        continue;
+      }
       const text = await res.text();
-      // some proxies wrap or return error pages — guard against non-JSON
       let json;
       try { json = JSON.parse(text); }
       catch { errors.push(`${attempt.name}: non-JSON response (${text.slice(0,60)}…)`); continue; }
       if (!json || !json.Data) { errors.push(`${attempt.name}: invalid response shape`); continue; }
-      preferredFetcher = attempt.idx;
+      preferredFetcher = idx;
       return { data: json, via: attempt.name };
     } catch (e) {
       const msg = e.name === 'AbortError' ? `timeout (${FETCH_TIMEOUT_MS}ms)` : (e.message || String(e));
@@ -732,11 +740,6 @@ const LS_PROXY_KEY = 'fivem-monitor-customProxy';
 let customProxyTemplate = localStorage.getItem(LS_PROXY_KEY) || '';
 if (customProxyTemplate) $('#customProxyInput').value = customProxyTemplate;
 
-// Initial fetcher preference: custom > file-origin-proxy > direct
-if (customProxyTemplate)      preferredFetcher = -2;
-else if (IS_FILE_ORIGIN)      preferredFetcher = 0;
-else                          preferredFetcher = -1;
-
 $('#settingsBtn').addEventListener('click', () => {
   const p = $('#settingsPanel');
   p.style.display = p.style.display === 'none' ? 'block' : 'none';
@@ -767,7 +770,7 @@ $('#saveProxyBtn').addEventListener('click', async () => {
     if (!j.Data) throw new Error('Unerwartete Antwort');
     customProxyTemplate = tpl;
     localStorage.setItem(LS_PROXY_KEY, tpl);
-    preferredFetcher = -2; // sentinel for "use custom proxy first"
+    preferredFetcher = null; // reset so the new custom proxy gets prioritized
     status.className = 'setting-status ok';
     status.textContent = `✓ Proxy funktioniert! (${j.Data.hostname ? stripColor(j.Data.hostname).slice(0,50) : 'OK'}) Wird ab jetzt bevorzugt verwendet.`;
   } catch (e) {
